@@ -57,5 +57,4 @@ Color currentLedColor;
 bool refreshScreen = true;  // обновляем ли экран при считывании цвета,
                             // устанавливается в true при первом считывании
 
-
 #include "utils.cpp"
