@@ -13,7 +13,6 @@ const uint8_t GREEN_LED_PIN = 7;  // пин зелёного светодиод�
 const uint8_t BLUE_LED_PIN = 8;   // пин синего светодиода
 const uint8_t SENSOR_PIN = A0;    // пин фоторезистора
 const uint8_t MODE_BUTTON_PIN = 2;
-// const uint8_t
 
 const uint8_t CONSECUTIVE_READINGS_DELAY =
     20;  // задержка между считываниями одного цвета
