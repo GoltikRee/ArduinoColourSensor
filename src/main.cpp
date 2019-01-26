@@ -1,24 +1,18 @@
-#include <Arduino.h>
-#include <EEPROM.h>
-
-#define ENABLE_SERIAL_DEBUG 0  // посылать ли отладочную информацию через Serial
-
-#include <LCD_1602_RUS.h>
-#include <Wire.h>
+#include "main.hpp"
 
 LCD_1602_RUS lcd(0x27, 16, 2);
 
-const uint8_t RED_LED_PIN = 7;  // пин красного светодиода
-const uint8_t GREEN_LED_PIN = 8;  // пин зелёного светодиода
-const uint8_t BLUE_LED_PIN = 9;   // пин синего светодиода
+const uint8_t RED_LED_PIN = 6;  // пин красного светодиода
+const uint8_t GREEN_LED_PIN = 7;  // пин зелёного светодиода
+const uint8_t BLUE_LED_PIN = 8;   // пин синего светодиода
 const uint8_t SENSOR_PIN = A0;    // пин фоторезистора
 const uint8_t MODE_BUTTON_PIN = 2;
 // const uint8_t
 
 const uint8_t CONSECUTIVE_READINGS_DELAY =
-    10;  // задержка между считываниями одного цвета
+    20;  // задержка между считываниями одного цвета
 const uint8_t COLOR_SWITCH_DELAY =
-    90;  // задержка перед считыванием следующего цвета
+    200;  // задержка перед считыванием следующего цвета
 const uint8_t CONSECUTIVE_READINGS_COUNT =
     7;  // количество последовательных считываний одного цвета, уменьшает шум
 
@@ -31,6 +25,17 @@ const String SERIAL_MESSAGE_VALUES_SEP = ",";
 enum Color { Red = 0, Green, Blue, None };
 
 enum Mode { Loading = 0, Paused, RunningAuto, RunningManual, Calibrating };
+
+enum ReadingColorState {
+    NotStarted = 0,
+    WaitingRed,
+    ReadingRed,
+    WaitingGreen,
+    ReadingGreen,
+    WaitingBlue,
+    ReadingBlue,
+    WaitingForNextIteration
+};
 
 int current_R, current_G, current_B;
 constexpr uint8_t ledPins[] = {
@@ -107,20 +112,38 @@ void lcd_displayLoadingScreen() {
     lcd_printCenter(L"Загрузка...");
 }
 
+void writeCalibrationData() {
+    for (uint8_t i = 0; i < 3; ++i) {
+        EEPROM.update(i, rgbMin[i]);
+        EEPROM.update(i + 3, rgbMax[i]);
+    }
+}
+
 uint8_t readColorLevel(Color color, uint8_t repeats) {
     uint32_t level_sum = 0;
+    uint8_t repeats_left = repeats;
     digitalWrite(ledPins[color], HIGH);
-    while (repeats--) {
-        level_sum += analogRead(SENSOR_PIN);
+    delay(COLOR_SWITCH_DELAY);
+    while (repeats_left--) {
+        debug("Reading #" + String(repeats - repeats_left));
+        uint16_t c = analogRead(SENSOR_PIN);
+        debug("Current reading: " + String(c));
+        level_sum += c;
         delay(CONSECUTIVE_READINGS_DELAY);
-        _delay_ms()
     }
+    digitalWrite(ledPins[color], LOW);
+    debug("LVLSUM: " + String(level_sum));
+    debug("-");
     return level_sum / repeats;
 }
 
 uint8_t adjustColorLevel(Color color, uint16_t raw_level) {
+    debug("Raw: " + String(raw_level));
     raw_level = constrain(raw_level, rgbMin[color], rgbMax[color]);
-    return map(raw_level, rgbMin[color], rgbMax[color], 255, 0);
+    debug("Raw-C: " + String(raw_level));
+    raw_level = map(raw_level, rgbMin[color], rgbMax[color], 255, 0);
+    debug("Raw-Mapped: " + String(raw_level));   
+    return raw_level;
 }
 
 void sendColorToSerial(uint8_t r, uint8_t g, uint8_t b) {
@@ -162,6 +185,7 @@ void switchToAuto() {
     lcd_printCenter(L"Считываем", 0);
     lcd_printCenter(L"цвет...", 1);
     debug("The device is now in AUTO mode.");
+    Serial.println(SERIAL_MESSAGE_START + "AM" + SERIAL_MESSAGE_END);
 }
 
 void switchToManual() {
@@ -175,6 +199,7 @@ void switchToManual() {
     lcd_printCenter(L"Жду команды!");
     lcd.println();
     debug("The device is now in MANUAL mode.");
+    Serial.println(SERIAL_MESSAGE_START + "MM" + SERIAL_MESSAGE_END);
 }
 
 void pause() {
@@ -188,6 +213,7 @@ void pause() {
     lcd_printCenter(L"ПАУЗА");
     lcd.println();
     debug("The device is now in PAUSED mode.");
+    Serial.println(SERIAL_MESSAGE_START + "PM" + SERIAL_MESSAGE_END);
 }
 
 void handleAutoIteration() { debug("Reading colour..."); }
@@ -229,21 +255,30 @@ void setup() {
 }
 
 void loop() {
-    switch (currentMode) {
-        case RunningAuto:
-            handleAutoIteration();
-            break;
-        case RunningManual:
-            handleManualIteration();
-            break;
-        case Paused:
-            handlePausedIteration();
-            break;
-        case Calibrating:
-            handleCalibrationIteration();
-            break;
-        default:
-            currentMode = Mode::Loading;
-            break;
+    Serial.println("White");
+    delay(10000);
+    rgbMin[Color::Red] = readColorLevel(Color::Red, 7);
+    rgbMin[Color::Green] = readColorLevel(Color::Green, 7);
+    rgbMin[Color::Blue] = readColorLevel(Color::Blue, 7);
+    Serial.println("WR: " + String(rgbMin[Color::Red]));
+    Serial.println("WG: " + String(rgbMin[Color::Green]));
+    Serial.println("WB: " + String(rgbMin[Color::Blue]));
+
+    Serial.println("Black");
+    delay(10000);
+    rgbMax[Color::Red] = readColorLevel(Color::Red, 7);
+    rgbMax[Color::Green] = readColorLevel(Color::Green, 7);
+    rgbMax[Color::Blue] = readColorLevel(Color::Blue, 7);
+    Serial.println("BR: " + String(rgbMax[Color::Red]));
+    Serial.println("BG: " + String(rgbMax[Color::Green]));
+    Serial.println("BB: " + String(rgbMax[Color::Blue]));
+    delay(5000);
+
+    while (1) {
+        Serial.println("R: " + String(adjustColorLevel(Color::Red, readColorLevel(Color::Red, 7))));
+        Serial.println("G: " + String(adjustColorLevel(Color::Green, readColorLevel(Color::Green, 7))));
+        Serial.println("B: " + String(adjustColorLevel(Color::Blue, readColorLevel(Color::Blue, 7))));
+        Serial.println("-----");
+        delay(2000);
     }
 }
