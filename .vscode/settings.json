@@ -1,0 +1,8 @@
+{
+    "terminal.integrated.env.linux": {
+        "PATH": "/home/ilya/.platformio/penv/bin:/home/ilya/.platformio/penv:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin",
+        "PLATFORMIO_CALLER": "vscode"
+    },
+    "python.pythonPath": "C:\\Program Files\\Python37\\python.exe",
+    "python.linting.enabled": true
+}
